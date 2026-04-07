@@ -1,11 +1,16 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class IsInstructor(BasePermission):
     """Only instructors can access."""
-    message = 'Only instructors can perform this action.'
+    message = 'Access denied. You must be an instructor to perform this action.'
  
     def has_permission(self, request, view):
+        logger.debug('Checking if user is instructor: %s', request.user.email)
+        
         return request.user.is_authenticated and request.user.is_instructor
     
 

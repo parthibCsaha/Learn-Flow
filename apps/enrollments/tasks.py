@@ -1,11 +1,17 @@
+import logging
+
 from celery import shared_task
 from django.core.mail import send_mail
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_enrollment_email(self, user_id, course_id):
     """Send welcome email when a student enrolls in a course."""
+
+    logger.debug('Preparing to send enrollment email: user_id=%s course_id=%s', user_id, course_id)
+
     try:
         from apps.users.models import User
         from apps.courses.models import Course

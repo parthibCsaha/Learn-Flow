@@ -2,12 +2,22 @@ from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import logging
 
 from .models import Enrollment, LessonProgress
 from .serializers import EnrollmentSerializer, CourseProgressSerializer, LessonProgressSerializer
 from .tasks import send_enrollment_email, send_completion_email
 from apps.courses.models import Course, Lesson
 
+logger = logging.getLogger(__name__)
+
+
+def _dispatch_task_safely(task, *args):
+    """Queue a Celery task without breaking API flow if broker/backend is down."""
+    try:
+        task.delay(*args)
+    except Exception:
+        logger.exception('Failed to queue async task %s with args=%s', task.name, args)
 
 class EnrollView(APIView):
     """
@@ -18,6 +28,8 @@ class EnrollView(APIView):
 
     def post(self, request, course_id):
         user = request.user
+
+        logger.debug('Enrollment attempt: user=%s course_id=%s', user.email, course_id)
 
         if user.is_instructor:
             return Response(
@@ -35,8 +47,10 @@ class EnrollView(APIView):
 
         enrollment = Enrollment.objects.create(student=user, course=course)
 
-        # Fire async email task
-        send_enrollment_email.delay(user.id, course.id)
+        logger.info('User %s enrolled in course "%s" (enrollment_id=%s)', user.email, course.title, enrollment.id)
+
+        # Fire async email task (non-blocking, failure should not break enrollment)
+        _dispatch_task_safely(send_enrollment_email, user.id, course.id)
 
         return Response(
             {'detail': f'Successfully enrolled in "{course.title}".', 'enrollment_id': enrollment.id},
@@ -131,7 +145,7 @@ class CompleteLessonView(APIView):
 
         # Check if entire course is now complete
         if enrollment.is_completed:
-            send_completion_email.delay(user.id, course.id)
+            _dispatch_task_safely(send_completion_email, user.id, course.id)
             return Response({
                 'detail': 'Lesson completed. Congratulations — you finished the course!',
                 'course_completed': True,

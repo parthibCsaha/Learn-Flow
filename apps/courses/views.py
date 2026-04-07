@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,6 +17,8 @@ from .serializers import (
 )
 from .permissions import IsInstructor, IsCourseOwner
 from .filters import CourseFilter
+
+logger = logging.getLogger(__name__)
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """List and retrieve categories. Read-only for all authenticated users."""
@@ -39,6 +43,9 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+
+        logger.debug('Fetching courses for user: %s', user.email)
+
         if user.is_instructor:
             # Instructors see all their own courses (published + drafts)
             return Course.objects.select_related('instructor', 'category').filter(
@@ -50,6 +57,8 @@ class CourseViewSet(viewsets.ModelViewSet):
         return Course.objects.select_related('instructor', 'category').filter(is_published=True)
     
     def get_serializer_class(self):
+        logger.debug('Getting serializer class for action: %s', self.action)
+         
         if self.action in ('create', 'update', 'partial_update'):
             return CourseWriteSerializer
         if self.action == 'retrieve':
@@ -57,6 +66,8 @@ class CourseViewSet(viewsets.ModelViewSet):
         return CourseListSerializer
     
     def get_permissions(self):
+        logger.debug('Getting permissions for action: %s', self.action)
+
         if self.action == 'create':
             return [permissions.IsAuthenticated(), IsInstructor()]
         if self.action in ('update', 'partial_update', 'destroy'):
@@ -66,12 +77,17 @@ class CourseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsCourseOwner])
     def publish(self, request, pk=None):
         """Toggle course publish state."""
+        logger.debug('Toggling publish state for course_id=%s by user=%s', pk, request.user.email)
+
         course = self.get_object()
         course.is_published = not course.is_published
         course.save(update_fields=['is_published'])
+
+        logger.info('Course %s publish state changed to %s by user %s', course.title, course.is_published, request.user.email)
+
         state = 'published' if course.is_published else 'unpublished'
         return Response({'detail': f'Course {state} successfully.', 'is_published': course.is_published})
-    
+     
 class SectionViewSet(viewsets.ModelViewSet):
     """
     Sections within a course.
@@ -100,6 +116,9 @@ class SectionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         course = Course.objects.get(pk=self.kwargs['course_pk'])
         # Check ownership manually since perform_create doesn't go through has_object_permission
+        
+        logger.debug('Attempting to create section for course_id=%s by user=%s', course.id, self.request.user.email)
+        
         if course.instructor != self.request.user:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('You do not own this course.')

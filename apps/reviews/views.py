@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
@@ -6,6 +8,7 @@ from .models import Review
 from .serializers import ReviewSerializer
 from apps.courses.models import Course
 
+logger = logging.getLogger(__name__)
 
 class ReviewListCreateView(generics.ListCreateAPIView):
     """
@@ -16,6 +19,8 @@ class ReviewListCreateView(generics.ListCreateAPIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_course(self):
+        logger.debug('Fetching course for review: course_id=%s', self.kwargs['course_id'])
+        
         try:
             return Course.objects.get(pk=self.kwargs['course_id'], is_published=True)
         except Course.DoesNotExist:
@@ -23,16 +28,22 @@ class ReviewListCreateView(generics.ListCreateAPIView):
             raise NotFound('Course not found.')
 
     def get_queryset(self):
+        logger.debug('Fetching reviews for course_id=%s', self.kwargs['course_id'])
+        
         return Review.objects.filter(
             course_id=self.kwargs['course_id']
         ).select_related('student')
 
     def get_serializer_context(self):
+        logger.debug('Getting serializer context for course_id=%s', self.kwargs['course_id'])
+        
         context = super().get_serializer_context()
         context['course'] = self.get_course()
         return context
 
     def create(self, request, *args, **kwargs):
+        logger.debug('Review submission attempt: user=%s course_id=%s', request.user.email, self.kwargs['course_id'])
+        
         if request.user.is_instructor:
             return Response(
                 {'detail': 'Instructors cannot review courses.'},
