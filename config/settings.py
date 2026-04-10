@@ -31,6 +31,7 @@ LOCAL_APPS = [
     'apps.courses',
     'apps.enrollments',
     'apps.reviews',
+    'apps.notes',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -198,6 +199,11 @@ LOGGING = {
             'propagate': False,
         },
         'apps.reviews': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'apps.notes': {
             'handlers': ['console'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
