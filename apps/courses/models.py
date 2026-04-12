@@ -94,6 +94,7 @@ class Lesson(models.Model):
     section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name='lessons')
     title = models.CharField(max_length=255)
     content = models.TextField(blank=True)
+    transcript = models.TextField(blank=True)
     video_url = models.URLField(blank=True)
     order = models.PositiveIntegerField(default=0)
     duration_minutes = models.PositiveIntegerField(default=0)

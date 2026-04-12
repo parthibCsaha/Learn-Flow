@@ -158,6 +158,12 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3000',
 ]
 
+# ─── AI (Groq) ────────────────────────────────────────────────────────────────
+GROQ_API_KEY = config('GROQ_API_KEY', default='')
+GROQ_MODEL = config('GROQ_MODEL', default='llama-3.1-8b-instant')
+GROQ_API_URL = config('GROQ_API_URL', default='https://api.groq.com/openai/v1/chat/completions')
+GROQ_TIMEOUT_SECONDS = config('GROQ_TIMEOUT_SECONDS', default=20, cast=int)
+
 
 LOGGING = {
     'version': 1,

@@ -1,11 +1,14 @@
 import logging
 
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
  
+from .ai_service import GroqAPIError, chat_completion
 from .models import Category, Course, Section, Lesson
 from .serializers import (
     CategorySerializer,
@@ -14,6 +17,8 @@ from .serializers import (
     CourseWriteSerializer,
     SectionSerializer,
     LessonSerializer,
+    LessonSummaryRequestSerializer,
+    LessonChatRequestSerializer,
 )
 from .permissions import IsInstructor, IsCourseOwner
 from .filters import CourseFilter
@@ -143,6 +148,13 @@ class LessonViewSet(viewsets.ModelViewSet):
  
     def _get_section(self):
         return Section.objects.select_related('course').get(pk=self.kwargs['section_pk'])
+
+    def get_serializer_class(self):
+        if self.action == 'summary':
+            return LessonSummaryRequestSerializer
+        if self.action == 'chat':
+            return LessonChatRequestSerializer
+        return LessonSerializer
     
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
@@ -168,5 +180,128 @@ class LessonViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('You do not own this course.')
         serializer.save(section=section)
+
+    @staticmethod
+    def _truncate_text(text, limit=10000):
+        if not text:
+            return ''
+        text = text.strip()
+        if len(text) <= limit:
+            return text
+        return f'{text[:limit]}...'
+
+    def _get_lesson_ai_context(self, lesson):
+        transcript = self._truncate_text(lesson.transcript)
+        content = self._truncate_text(lesson.content)
+
+        if transcript and content:
+            return f'Video transcript:\n{transcript}\n\nLesson notes/content:\n{content}'
+        if transcript:
+            return f'Video transcript:\n{transcript}'
+        if content:
+            return f'Lesson notes/content:\n{content}'
+        return ''
+
+    @action(detail=True, methods=['post'], url_path='summary')
+    def summary(self, request, *args, **kwargs):
+        lesson = self.get_object()
+        course = lesson.section.course
+        lesson_context = self._get_lesson_ai_context(lesson)
+
+        if not lesson_context:
+            return Response(
+                {'detail': 'Lesson has no text content or transcript to summarize.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        messages = [
+            {
+                'role': 'system',
+                'content': (
+                    'You are an LMS tutor. Create concise study summaries from lesson content. '
+                    'Use simple language and keep the response structured.'
+                ),
+            },
+            {
+                'role': 'user',
+                'content': (
+                    f'Course: {course.title}\n'
+                    f'Lesson: {lesson.title}\n\n'
+                    'Please provide:\n'
+                    '1) A short summary (4-6 lines)\n'
+                    '2) 3-6 key bullet points\n\n'
+                    f'Lesson context:\n{lesson_context}'
+                ),
+            },
+        ]
+
+        try:
+            ai_response = chat_completion(messages)
+        except ImproperlyConfigured as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except GroqAPIError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(
+            {
+                'lesson_id': lesson.id,
+                'course_id': course.id,
+                'summary': ai_response,
+                'model': settings.GROQ_MODEL,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['post'], url_path='chat')
+    def chat(self, request, *args, **kwargs):
+        payload = self.get_serializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        lesson = self.get_object()
+        course = lesson.section.course
+        lesson_context = self._get_lesson_ai_context(lesson)
+
+        if not lesson_context:
+            return Response(
+                {'detail': 'Lesson has no text content or transcript for chat context.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_message = payload.validated_data['message']
+        messages = [
+            {
+                'role': 'system',
+                'content': (
+                    'You are an LMS lesson assistant. Answer based only on the provided lesson context. '
+                    'If context is insufficient, say so clearly.'
+                ),
+            },
+            {
+                'role': 'user',
+                'content': (
+                    f'Course: {course.title}\n'
+                    f'Lesson: {lesson.title}\n\n'
+                    f'Lesson context:\n{lesson_context}\n\n'
+                    f'Question: {user_message}'
+                ),
+            },
+        ]
+
+        try:
+            ai_response = chat_completion(messages)
+        except ImproperlyConfigured as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except GroqAPIError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(
+            {
+                'lesson_id': lesson.id,
+                'course_id': course.id,
+                'reply': ai_response,
+                'model': settings.GROQ_MODEL,
+            },
+            status=status.HTTP_200_OK,
+        )
 
         

@@ -13,7 +13,7 @@ class CategorySerializer(serializers.ModelSerializer):
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
-        fields = ('id', 'title', 'content', 'video_url', 'order', 'duration_minutes')
+        fields = ('id', 'title', 'content', 'transcript', 'video_url', 'order', 'duration_minutes')
  
 
 class SectionSerializer(serializers.ModelSerializer):
@@ -75,3 +75,11 @@ class CourseWriteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['instructor'] = self.context['request'].user
         return super().create(validated_data)
+
+
+class LessonSummaryRequestSerializer(serializers.Serializer):
+    pass
+
+
+class LessonChatRequestSerializer(serializers.Serializer):
+    message = serializers.CharField(max_length=3000)
