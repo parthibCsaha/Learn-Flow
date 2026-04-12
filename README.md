@@ -1,7 +1,7 @@
-# LearnFlow LMS (Django REST API)
+# LearnFlow - AI Powered Learning Management System (Django REST API)
 
 LearnFlow is a backend API for an online learning platform.
-It includes user authentication, course management, enrollments, lesson progress tracking, reviews, and async email notifications with Celery.
+It includes user authentication, course management, enrollments, lesson progress tracking, reviews, async email notifications with Celery, and AI-powered lesson summary/chat.
 
 ## Tech Stack
 
@@ -47,7 +47,12 @@ EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_HOST_USER=
 EMAIL_HOST_PASSWORD=
-DEFAULT_FROM_EMAIL=LearnFlow <noreply@learnflow.com>
+DEFAULT_FROM_EMAIL="LearnFlow <noreply@learnflow.com>"
+
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.1-8b-instant
+GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
+GROQ_TIMEOUT_SECONDS=20
 ```
 
 ## Local Setup
@@ -97,6 +102,21 @@ After starting server:
 - `POST /api/courses/{id}/publish/`
 - `GET/POST /api/courses/{course_id}/sections/`
 - `GET/POST /api/courses/{course_id}/sections/{section_id}/lessons/`
+- `POST /api/courses/{course_id}/sections/{section_id}/lessons/{lesson_id}/summary/`
+- `POST /api/courses/{course_id}/sections/{section_id}/lessons/{lesson_id}/chat/`
+
+### AI Lesson Endpoints
+
+- Summary endpoint uses lesson text context from `transcript` first, then falls back to `content`.
+- Chat endpoint accepts JSON body:
+
+```json
+{
+   "message": "Explain this lesson in simple words"
+}
+```
+
+- Summary endpoint request body can be empty (`{}`).
 
 ### Enrollments & Progress
 - `POST /api/courses/{course_id}/enroll/`
@@ -113,3 +133,4 @@ After starting server:
 - `AUTH_USER_MODEL` is custom (`users.User`).
 - JWT is enabled globally in DRF settings.
 - `.env` and `.venv` are git-ignored.
+- Add real teacher speech to lesson `transcript` for best AI results (temporary fake transcript is fine for testing).
